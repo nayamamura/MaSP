@@ -80,7 +80,7 @@ class ActorParsing(multiprocessing.Process):
         parser = Parser.Parser(database)
         parser.load_child2parent()
         memory = Memory()
-        for f in tqdm(files, total=len(files)):
+        for f in tqdm(files, total=len(files), position=0, leave=True):
             # xxx added: output to another dir
             f_dir = os.path.dirname(f)
             new_f_dir = f_dir + "_proc_{}_{}_".format("direct", beam_size) + self._out_dir_suffix
