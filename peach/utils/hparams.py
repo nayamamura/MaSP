@@ -265,7 +265,8 @@ class ConfigsTemplate(metaclass=ABCMeta):
         self.run_model_dir = mp_join(self.runtime_dir, 'run_model')
         self.processed_dir = mp_join(self.runtime_dir, 'preproc')
 
-        self.cur_run_dir = mp_join(self.run_model_dir, self['model_dir_prefix'] + self.model_name)
+        self.cur_run_dir = mp_join(self.run_model_dir, self['model_dir_prefix'])
+        print('model dir: ' + self.cur_run_dir)
         self.log_dir = mp_join(self.cur_run_dir, 'log_files')
         self.summary_dir = mp_join(self.cur_run_dir, 'summary')
         self.ckpt_dir = mp_join(self.cur_run_dir, 'ckpt')
