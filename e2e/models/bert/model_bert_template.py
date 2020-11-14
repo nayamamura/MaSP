@@ -779,26 +779,26 @@ class ModelBertTemplate(ModelBertAbstractCls):
             process_inputs(example, input_dict)
 
         # ====== create ======
-        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
         EO_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         entity_type_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         
         for idx_e, example in enumerate(example_batch):
-            for idx_wp, (_id, _pos_id, _type_id) in enumerate(
-                    zip(input_dict['input_ids_list'][idx_e], input_dict['input_pos_ids_list'][idx_e], input_dict['input_type_ids_list'][idx_e])):
-                input_ids_np[idx_e, idx_wp] = _id
-                input_pos_ids_np[idx_e, idx_wp] = _pos_id
-                input_type_ids_np[idx_e, idx_wp] = _type_id
+            #for idx_wp, (_id, _pos_id, _type_id) in enumerate(
+                    #zip(input_dict['input_ids_list'][idx_e], input_dict['input_pos_ids_list'][idx_e], input_dict['input_type_ids_list'][idx_e])):
+                #input_ids_np[idx_e, idx_wp] = _id
+                #input_pos_ids_np[idx_e, idx_wp] = _pos_id
+                #input_type_ids_np[idx_e, idx_wp] = _type_id
             for idx_sl, (_eo_id, _et_id) in enumerate(zip(input_dict['EO_label_list'][idx_e], input_dict['entity_type_label_list'][idx_e])):
                 EO_label_np[idx_e, idx_sl] = _eo_id
                 entity_type_label_np[idx_e, idx_sl] = _et_id
 
         # get feed dict
-        feed_dict[self.input_ids] = input_ids_np
-        feed_dict[self.input_pos_ids] = input_pos_ids_np
-        feed_dict[self.input_type_ids] = input_type_ids_np
+        #feed_dict[self.input_ids] = input_ids_np
+        #feed_dict[self.input_pos_ids] = input_pos_ids_np
+        #feed_dict[self.input_type_ids] = input_type_ids_np
         feed_dict[self.EO_label] = EO_label_np
         feed_dict[self.entity_type_label] = entity_type_label_np
 
@@ -922,6 +922,119 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 )
             else:
                 feed_dict[self.loss_gain_wrt_qt] = np.ones([len(example_batch)], dtype="float32")
+        
+        # Tweak the input
+        input_dict = {
+            'max_wpl': 0,
+            'input_ids_list': [],
+            'input_pos_ids_list': [],
+            'input_type_ids_list': [],
+            #'u_lens_list': [],
+        }
+        for example in example_batch:
+            if "input_lf_ids" in example["cache"]:
+                ipt_ids = example["cache"]["input_lf_ids"]
+                ipt_pos_ids = example["cache"]["input_lf_pos_ids"]
+                ipt_type_ids = example["cache"]["input_lf_type_ids"]
+                #u_lens = example["cache"]["u_lens"]
+            else:
+                pos_base = 0
+                prev_q_ids, prev_q_pos_ids, pos_base = _get_ids_for_u(
+                    example["prev_lf_ids"],
+                    example["prev_lf_pos_ids"],
+                    pos_base
+                )
+                sep1 = ([self.sep_id], [pos_base])
+                pos_base += 1
+
+                cur_q_ids, cur_q_pos_ids, pos_base = _get_ids_for_u(
+                    example["tokenized_utterances_ids"]["cur_q"],
+                    example["tokenized_utterances_pos_ids"]["cur_q"],
+                    pos_base
+                )
+                sep2 = ([self.cls_id], [pos_base])
+                pos_base += 1
+
+                all_seq_data = [
+                    (prev_q_ids, prev_q_pos_ids),
+                    sep1,
+                    (cur_q_ids, cur_q_pos_ids),
+                    sep2,
+                ]
+                # add pos_ids mask
+                all_pos_ids = []
+                for _, _pos_ids in all_seq_data:
+                    all_pos_ids.extend(_pos_ids)
+                all_pos_ids_mask = pos_ids_mask_gen(all_pos_ids, max_seq_len)
+                # apply mask
+                new_all_seq_data = []
+                mask_ptr = 0
+                for _ids, _pos_ids in all_seq_data:
+                    ids_len = len(_ids)
+                    ids_mask = all_pos_ids_mask[mask_ptr: mask_ptr+ids_len]
+                    assert ids_len == len(_pos_ids)
+                    assert ids_len == len(ids_mask)
+                    new_ids = [_id for _id, _m in zip(_ids, ids_mask) if _m == 1]
+                    new_pos_ids = [_id for _id, _m in zip(_pos_ids, ids_mask) if _m == 1]
+                    new_all_seq_data.append((new_ids, new_pos_ids))
+                    mask_ptr += ids_len
+                all_seq_data = new_all_seq_data
+
+                u_lens = [len(_d[0]) for _d in all_seq_data]
+                # filter
+                if max_seq_len > 0:
+                    while sum(u_lens) > max_seq_len:
+                        for _i in range(len(u_lens)):
+                            if u_lens[_i] > 1:
+                                u_lens[_i] -= 1
+
+                # ids for this batch
+                ipt_ids = []
+                ipt_pos_ids = []
+                ipt_type_ids = []
+                for _idx_d, (_d, _len) in enumerate(zip(all_seq_data, u_lens)):
+                    ipt_ids.extend(_d[0][:_len])
+                    ipt_pos_ids.extend(_d[1][:_len])
+                    ipt_type_ids.extend([_idx_d] * _len)
+                # re-scale the pos id
+                new_ipt_pos_ids = []
+                prev_pos_id = None
+                new_pos_id = -1
+                for pos_id in ipt_pos_ids:
+                    if prev_pos_id is None or pos_id != prev_pos_id:
+                        new_pos_id += 1
+                        prev_pos_id = pos_id
+                    new_ipt_pos_ids.append(new_pos_id)
+                ipt_pos_ids = new_ipt_pos_ids
+
+                example["cache"]["input_lf_ids"] = ipt_ids
+                example["cache"]["input_lf_pos_ids"] = ipt_pos_ids
+                example["cache"]["input_lf_type_ids"] = ipt_type_ids
+                #example["cache"]["u_lens"] = u_lens
+
+            assert len(ipt_ids) == len(ipt_pos_ids) and len(ipt_pos_ids) == len(ipt_type_ids)
+            input_dict['max_wpl'] = max(input_dict['max_wpl'], len(ipt_ids))
+            # append
+            input_dict['input_ids_list'].append(ipt_ids)
+            input_dict['input_pos_ids_list'].append(ipt_pos_ids)
+            input_dict['input_type_ids_list'].append(ipt_type_ids)
+            input_dict['u_lens_list'].append(u_lens)
+        # ====== create ======
+        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        
+        for idx_e, example in enumerate(example_batch):
+            for idx_wp, (_id, _pos_id, _type_id) in enumerate(
+                    zip(input_dict['input_ids_list'][idx_e], input_dict['input_pos_ids_list'][idx_e], input_dict['input_type_ids_list'][idx_e])):
+                input_ids_np[idx_e, idx_wp] = _id
+                input_pos_ids_np[idx_e, idx_wp] = _pos_id
+                input_type_ids_np[idx_e, idx_wp] = _type_id
+
+        # get feed dict
+        feed_dict[self.input_ids] = input_ids_np
+        feed_dict[self.input_pos_ids] = input_pos_ids_np
+        feed_dict[self.input_type_ids] = input_type_ids_np
         #assert False
         return feed_dict
 
