@@ -53,7 +53,9 @@ class E2eEvaluator(object):
             for example_batch, _, _, _ in dataset_obj.generate_batch_iter(
                     self.cfg['test_batch_size'], data_type):
                 example_batch_list.extend(example_batch)
+                # Get inputs for evaluation
                 feed_dict = self.model.get_feed_dict(example_batch, False)
+                # Runs the model here
                 run_res = sess.run(run_dict, feed_dict=feed_dict)
 
                 for _idx_ex, _example in enumerate(example_batch):

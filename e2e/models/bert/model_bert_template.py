@@ -121,6 +121,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
         self.tokenizer = tokenizer
 
         self.input_pos_ids = tf.placeholder(tf.int32, [None, None])
+        self.input_pos_ids2 = tf.placeholder(tf.int32, [None, None])
         self.loss_gain_wrt_qt = tf.placeholder(tf.float32, [None])
         # ==== an introduction to lengths =====
         # [prev_q] [sep] [prev_a] [sep1] [cur_q] [cls]
@@ -779,9 +780,9 @@ class ModelBertTemplate(ModelBertAbstractCls):
             process_inputs(example, input_dict)
 
         # ====== create ======
-        #input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        #input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        #input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
         EO_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         entity_type_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         
@@ -1020,9 +1021,9 @@ class ModelBertTemplate(ModelBertAbstractCls):
             input_dict['input_type_ids_list'].append(ipt_type_ids)
             #input_dict['u_lens_list'].append(u_lens)
         # ====== create ======
-        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
         
         for idx_e, example in enumerate(example_batch):
             for idx_wp, (_id, _pos_id, _type_id) in enumerate(
