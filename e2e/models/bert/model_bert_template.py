@@ -780,9 +780,9 @@ class ModelBertTemplate(ModelBertAbstractCls):
             process_inputs(example, input_dict)
 
         # ====== create ======
-        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
-        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        #input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
         EO_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         entity_type_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
         
