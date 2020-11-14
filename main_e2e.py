@@ -26,8 +26,8 @@ def train(cfg):
             cfg['vocab_file'], cfg['do_lower_case'], labels_dict_for_infer=None,
 
         )
-        dataset_obj.process_training_data()
-        dataset_obj.clean_data(del_lfs=True)
+        dataset_obj.process_training_data() # Training data created in this step.
+        dataset_obj.clean_data(del_lfs=True) # Clean up logical form property of the training data
         save_file(dataset_obj, cfg['processed_path'])
         # for processed light
         tmp_train_feature_list, tmp_dev_feature_list = dataset_obj._train_feature_list, dataset_obj._dev_feature_list
@@ -49,6 +49,8 @@ def train(cfg):
         cfg['num_epochs'], cfg['train_batch_size'], dataset_obj.num_train_examples, num_steps=cfg['num_steps'])
     with tf.variable_scope('model') as scope:
         # cfg, vocab, data_type, labels_dict, max_sequence_len, num_training_steps, scope
+        # cfg['model_class']: <class 'e2e.models.bert.model_bert_template.ModelBertTemplate'>
+        # cfg['dataset']: e2e_wo_con
         model_obj = cfg['model_class'](
             cfg, dataset_obj.tokenizer, cfg['dataset'],
             dataset_obj.get_labels_dict(), cfg["max_sequence_len"], num_training_steps, scope.name

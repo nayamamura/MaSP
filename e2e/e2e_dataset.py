@@ -77,6 +77,7 @@ class E2eDataset(object):
     # add test data processing
     def process_test_data(self, data_dir):
         logging.info("For testing data")
+        # Create dialog history for training
         example_list = self._pre_process_raw_data(data_dir)
         example_list, = self.processor.get_updated_example_list([example_list], update_labels=False)
         logging.info("\ttransforming examples to features")
@@ -85,6 +86,8 @@ class E2eDataset(object):
             feature_list.append(
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
+        # Iterate over and add previous logical form    
+        self.add_prev_example(feature_list)    
         return feature_list
 
     def fetch_examples(self, max_sent_len=None):
@@ -113,11 +116,30 @@ class E2eDataset(object):
             random.shuffle(data_dict_wrt_qt[_qt])
         # dataset_obj.fetch_examples(max_sent_len=13)
         anchor = 0
+    
+    def add_prev_example(feature_list):
+        # Iterate over and add previous logical form
+        prev = None
+        for _example in feature_list:
+            eid = _example['id'].split('|||')
+            #print(eid)
+            cur_idx = int(eid[1])
+            max_idx = int(eid[2])
+            if  prev is not None:
+                _example['prev'] = prev
+            # Store current lf for next iteration
+            if cur_idx != max_idx - 1:
+                prev = _example
+            else:
+                prev = None
 
     def process_training_data(self, debug_num=0):
         # train
         logging.info("For training data")
+        # Process input in the format of dialog history
         train_example_list = self._pre_process_raw_data(self.train_data_dir, debug_num=debug_num)
+        # Identify the gold logical form and adds the "gold_lf" and "gold_sketch" (sketch of gold_lf) property under "if"
+        # also gold_leaves and their sketches
         train_example_list, = self.processor.get_updated_example_list([train_example_list], update_labels=True)
         logging.info("\ttransforming examples to features")
         self._train_feature_list = []
@@ -126,6 +148,8 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         self._labels_dict = self.processor.get_labels_dict()
+        # Iterate over and add previous logical form
+        self.add_prev_example(self._train_feature_list) 
 
         # dev
         logging.info("For dev data")
@@ -137,6 +161,8 @@ class E2eDataset(object):
             self._dev_feature_list.append(
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
+        # Iterate over and add previous logical form
+        self.add_prev_example(self._dev_feature_list)
 
     @property
     def num_train_examples(self):
@@ -173,11 +199,17 @@ class E2eDataset(object):
                 return {}
             return _dialog_elem.get("ent2idxss") or {}
 
+        # Iterate over each turns of CSQA, identify and map entities
+        # add the properties to raw_data
         for _d in raw_data:
+            # Tokenize the utterance of the dialog
             _d["tokenized_utterance"] = spacy_tokenize(_d["utterance"])
+            # Get list of entities in utterance.
+            # Seach for entities_in_utterance or entities property in a turn
             temp = get_entities(_d).copy()
-            temp_ent_types = [BaseProcessor.dict_e2t[ent] if ent in BaseProcessor.dict_e2t else UNK_TOKEN
-                              for ent in temp]
+            # Get the entity type (i.e. parent in reverse of par_child_dict.json)
+            temp_ent_types = [BaseProcessor.dict_e2t[ent] if ent in BaseProcessor.dict_e2t else UNK_TOKEN for ent in temp]
+            # Get the label of the entities
             temp_strs = [BaseProcessor.dict_e[idx] for idx in temp]
 
             if len(temp) > 0:
@@ -186,6 +218,7 @@ class E2eDataset(object):
                         sorted(zip(temp, temp_ent_types, temp_strs),
                                key=lambda elem: len(elem[2].split()), reverse=True)
                     ))
+            # generate_EO_with_etype(sentence, entity_codes, entities_in_utterance, entity_types, empty_token)   
             EO, entity_types, dict_code2idxss = generate_EO_with_etype(
                 _d["tokenized_utterance"], temp, temp_strs, temp_ent_types, EMPTY_TOKEN)
             assert len(_d["tokenized_utterance"].split()) == len(EO)
@@ -260,6 +293,11 @@ class E2eDataset(object):
                 turn["lf"] = {
                     "true_lf": raw_dialog_turn["current"]["system"]["true_lf"],
                 }
+            # Add previous logical form    
+            '''if not prev_none and "true_lf" in raw_dialog_turn["previous"]["system"]:
+                turn["prev_lf"] = {
+                    "true_lf": raw_dialog_turn["previous"]["system"]["true_lf"],
+                }'''
             new_dialog.append(turn)
         return new_dialog
 
@@ -301,9 +339,13 @@ class E2eDataset(object):
 
 class BaseProcessor(object):
     # dict_e = dict((k, spacy_tokenize(v)) for k, v in load_json("data/kb/items_wikidata_n.json").items())
+    # Item and it's label e.g. "Q5266722": "development and peace"
     dict_e = load_json("data/kb/items_wikidata_n_tokenized.json")
+    # Property and it's label e.g. "P86": "composer",  tokenize it and store.
     dict_p = dict((k, spacy_tokenize(v)) for k, v in load_json("data/kb/filtered_property_wikidata4.json").items())
+    # Parent:[list of childs] e.g. "Q15726688": ["Q23872762", "Q12345822", "Q15142867"]
     dict_t2e = load_json("data/kb/par_child_dict.json")
+    # Dict of child to parent. e.g. "Q23872762": "Q15726688"
     dict_e2t = dict((v, k) for k, vs in dict_t2e.items() for v in vs)
 
     def __init__(self):
@@ -334,6 +376,10 @@ class E2eProcessor(BaseProcessor):
         self.dict_qt2sketches = None
 
     def transform_example_to_feature(self, example, labels_dict, tokenizer):
+        '''
+        Add id list properties for tokenized_utterances, tokenized_utterances_pos, 
+        predicates, types, EOs, entity_types, gold_sketch_ids, gold_leaves_ids
+        '''
         # for utterance
         example["tokenized_utterances_ids"] = {}
         example["tokenized_utterances_pos_ids"] = {}
@@ -374,6 +420,7 @@ class E2eProcessor(BaseProcessor):
                             example["lf"]["gold_sketch"], example["lf"]["gold_leaves"])
         return example
 
+
     def get_updated_example_list(self, example_list_sets, update_labels=False, **kwargs):
         # the 1st set in example_list_sets is train
         logging.info("\tget example list in the processor")
@@ -382,13 +429,17 @@ class E2eProcessor(BaseProcessor):
             assert update_labels
         logging.info("\t\tpost processing the example list")
         new_example_sets = []
+        # Add the index of valid logical form
         for idx_s, example_list in enumerate(example_list_sets):
             new_example_list = []
             for example in example_list:
+                # post_process_dialog_turn only valid for train/dev. test set not processed
+                # post process evaluates the true lf is valid and add index of it json if valid
                 new_example_list.append(self.post_process_dialog_turn(example))
             new_example_sets.append(new_example_list)
         example_list_sets = new_example_sets
 
+        # update_labels is True for train, False for dev
         if update_labels:
             logging.info("\t\tupdating all the labels")
             special_tokens = [PAD_TOKEN, EMPTY_TOKEN, UNK_TOKEN]
@@ -417,7 +468,8 @@ class E2eProcessor(BaseProcessor):
                 },
             }
             # update valid sketch list wrt question type
-            train_example_list = example_list_sets[0]
+            train_example_list = example_list_sets[0] # len 96830 for 300 (number of training example). example_list_sets is len 1
+            # Question to sketch mapping. sketch is based on grammer.
             self.dict_qt2sketches = self._get_valid_sketches_wrt_question_type(train_example_list)
 
         logging.info("\t\tprocessing the examples after updating labels")
@@ -430,53 +482,62 @@ class E2eProcessor(BaseProcessor):
             new_example_sets.append(new_example_list)
         return new_example_sets
 
+
     @staticmethod
     def post_process_dialog_turn(dialog_turn, *args, **kwargs):
-        if "lf" in dialog_turn:  # for training and dev
-            # 1. filtering by the occurrence of entity and predicates
-            true_lfs = dialog_turn["lf"]["true_lf"]
-            # 1.1 gold ent
-            gold_entities = set(dialog_turn["entities"]["cur_q"])
-            # 1.2 gold predicates
-            gold_predicates = set(dialog_turn["predicates"]["cur_q"])
-            # 1.3 gold num
-            num2idxs = index_num_in_tokenized_utterance(
-                dialog_turn["tokenized_utterances"]["cur_q"],
-                [eo_label != "O" for eo_label in dialog_turn["EOs"]["cur_q"]])
-            gold_nums = set(num2idxs.keys())
-            # if len(gold_nums) > 0:
-            #     print("QT: {}; len: {}, utterance: {}; nums: {}".format(
-            #         dialog_turn["question_type"],
-            #         len(gold_nums), dialog_turn["utterances"]["cur_q"], gold_nums))
-            valid_indices = []
-            for idx_lf, true_lf in enumerate(true_lfs):
-                entities_in_lf = set()
-                predicates_in_lf = set()
-                num_in_lf = set()
-                for _item_type, _item_code in true_lf[1]:
-                    if _item_type == "e":
-                        entities_in_lf.add(_item_code)
-                    elif _item_type == "r":
-                        predicates_in_lf.add(_item_code)
-                    elif _item_type == "num_utterence":
-                        num_in_lf.add(int(_item_code))
-                # if gold_entities.issubset(entities_in_lf) and gold_predicates.issubset(predicates_in_lf):
-                #     valid_indices.append(idx_lf)
-                if gold_entities == entities_in_lf:
-                    if gold_predicates.issubset(predicates_in_lf):
-                        if gold_nums == num_in_lf:
-                            valid_indices.append(idx_lf)
-                            cond = 0
+        def _post_process_dialog_turn(dialog_turn, lf, turn, *args, **kwargs):
+            if lf in dialog_turn:  # for training and dev
+                # 1. filtering by the occurrence of entity and predicates
+                true_lfs = dialog_turn[lf]["true_lf"]
+                # 1.1 gold ent
+                gold_entities = set(dialog_turn["entities"][turn])
+                # 1.2 gold predicates
+                gold_predicates = set(dialog_turn["predicates"][turn])
+                # 1.3 gold num
+                num2idxs = index_num_in_tokenized_utterance(
+                    dialog_turn["tokenized_utterances"][turn],
+                    [eo_label != "O" for eo_label in dialog_turn["EOs"][turn]])
+                gold_nums = set(num2idxs.keys())
+                # if len(gold_nums) > 0:
+                #     print("QT: {}; len: {}, utterance: {}; nums: {}".format(
+                #         dialog_turn["question_type"],
+                #         len(gold_nums), dialog_turn["utterances"]["cur_q"], gold_nums))
+                valid_indices = []
+                for idx_lf, true_lf in enumerate(true_lfs):
+                    entities_in_lf = set()
+                    predicates_in_lf = set()
+                    num_in_lf = set()
+                    for _item_type, _item_code in true_lf[1]:
+                        if _item_type == "e": # Entity
+                            entities_in_lf.add(_item_code)
+                        elif _item_type == "r": # Predicate
+                            predicates_in_lf.add(_item_code)
+                        elif _item_type == "num_utterence": # 
+                            num_in_lf.add(int(_item_code))
+                    # if gold_entities.issubset(entities_in_lf) and gold_predicates.issubset(predicates_in_lf):
+                    #     valid_indices.append(idx_lf)
+                    # Set of entity in the logical form is idential to entity list in current question propery
+                    if gold_entities == entities_in_lf:
+                        # Set of predicates in gold is subset of predicate in logical form
+                        if gold_predicates.issubset(predicates_in_lf):
+                            if gold_nums == num_in_lf:
+                                valid_indices.append(idx_lf)
+                                cond = 0
+                            else:
+                                cond = 1
                         else:
-                            cond = 1
+                            cond = 2
                     else:
-                        cond = 2
-                else:
-                    cond = 3
-                # if cond != 0:
-                #     print("\t\tcond", cond)
-            # print("corrct {} / {}: {}".format(len(valid_indices), len(true_lfs), len(valid_indices)>0))
-            dialog_turn["lf"]["valid_indices"] = valid_indices
+                        cond = 3
+                    # if cond != 0:
+                    #     print("\t\tcond", cond)
+                # print("corrct {} / {}: {}".format(len(valid_indices), len(true_lfs), len(valid_indices)>0))
+                # Entire loop above is to add valid indices for the logical form
+                dialog_turn[lf]["valid_indices"] = valid_indices
+            return dialog_turn
+
+        dialog_turn = _post_process_dialog_turn(dialog_turn, 'lf', 'cur_q', *args, **kwargs)
+        #dialog_turn = _post_process_dialog_turn(dialog_turn, 'prev_lf', 'prev_q', *args, **kwargs)
         return dialog_turn
 
     def process_dialog_turn(self, dialog_turn):

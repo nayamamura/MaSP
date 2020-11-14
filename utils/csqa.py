@@ -189,6 +189,16 @@ def get_numbers(_dialog_elem):
 
 # ============= EO and entity type label
 def replace_EO(sentence, EO, ent_type_labels, cur_type, entities):
+    '''
+    Example
+    Sentence: ['which', 'event', 'sequences', 'did', 'håvard', 'vad', 'petersson', 'take', 'part', 'in', '?']
+    cur_type: Q502895
+    entities: ['håvard', 'vad', 'petersson']
+    s:  ['which', 'event', 'sequences', 'XXX', 'XXX', 'XXX', 'petersson', 'take', 'part', 'in', '?']
+    EO: ['O', 'O', 'O', 'O', 'B', 'M', 'E', 'O', 'O', 'O', 'O']
+    ent_type_labels: ['[EMPTY]', '[EMPTY]', '[EMPTY]', '[EMPTY]', 'Q502895', 'Q502895', 'Q502895', '[EMPTY]', '[EMPTY]', '[EMPTY]', '[EMPTY]']
+    [[4, 5, 6]]
+    '''
     s = ' '.join(sentence)
     e = ' '.join(entities)
     s = s.replace(e, ' '.join(['XXX'] * len(entities)))
@@ -204,33 +214,48 @@ def replace_EO(sentence, EO, ent_type_labels, cur_type, entities):
                 cont += 1
                 flag = False
                 if len(entities) == 1:
-                    EO[i] = 'S'
+                    EO[i] = 'S' # Single case
                     ent_type_labels[i] = cur_type
                     flag = True
                 else:
-                    EO[i] = 'B'
+                    EO[i] = 'B' # Begining
                     ent_type_labels[i] = cur_type
                 indices_list.append([i])
             else:
                 cont += 1
                 if cont == len(entities):
-                    EO[i] = 'E'
+                    EO[i] = 'E' # End
                     ent_type_labels[i] = cur_type
                     flag = True
                 else:
-                    EO[i] = 'M'
+                    EO[i] = 'M' # Middle
                     ent_type_labels[i] = cur_type
                 indices_list[-1].append(i)
     return s, EO, ent_type_labels, indices_list
 
 
 def generate_EO_with_etype(sentence, entity_codes, entities_in_utterance, entity_types, empty_token):
+    '''
+    Example (Q1450777 is Håvard Vad Petersson and Q502895 is common name)
+    Input
+    Sentence: ['which', 'event', 'sequences', 'did', 'håvard', 'vad', 'petersson', 'take', 'part', 'in', '?']
+    entity_codes: ('Q1450777',)
+    entities_in_utterance: ('håvard vad petersson,) 
+    entity_types: ('Q502895',)
+
+    Return values
+    EO:  ['O', 'O', 'O', 'O', 'B', 'M', 'E', 'O', 'O', 'O', 'O']
+    ent_type_labels: ['[EMPTY]', '[EMPTY]', '[EMPTY]', '[EMPTY]', 'Q502895', 'Q502895', 'Q502895', '[EMPTY]', '[EMPTY]', '[EMPTY]', '[EMPTY]']
+    dict_code2indices_list: {'Q1450777': [[4, 5, 6]] }
+    '''
     # entities_in_utterance is a str list
     s = sentence.split()
-    EO = ['O' for _ in s]
+    EO = ['O' for _ in s] # s is spacey tokenized utterance
     ent_type_labels = [empty_token for _ in s]
+    # Maps entity to indices in utterance.
     dict_code2indices_list = {}
     for e_code, e, cur_type in zip(entity_codes, entities_in_utterance, entity_types):
+        # replace_EO(sentence, EO, ent_type_labels, cur_type, entities)
         s, EO, ent_type_labels, indices_list = replace_EO(s, EO, ent_type_labels, cur_type, e.split())
         if e_code not in dict_code2indices_list:
             dict_code2indices_list[e_code] = []

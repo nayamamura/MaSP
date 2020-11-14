@@ -74,6 +74,8 @@ class ModelBertTemplate(ModelBertAbstractCls):
     def get_identity_param_list():
         return ModelBertAbstractCls.get_identity_param_list() + []
 
+    # called from main_e2e.py
+    # cfg, dataset_obj.tokenizer, cfg['dataset'], dataset_obj.get_labels_dict(), cfg["max_sequence_len"], num_training_steps, scope.name
     def __init__(self, cfg, tokenizer, data_type, labels_dict, max_sequence_len, num_training_steps, scope):
         if "level_for_dec" in cfg and cfg['level_for_dec'] >= 0:
             num_hidden_layers = cfg['level_for_dec'] + 1
@@ -237,6 +239,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
 
     def _setup_training(self):
         self.logits_dict = self._build_network()
+        # Get the joint loss
         self.loss, self.loss_dict = self._build_loss()
         self.prediction_dict = self._build_prediction()
 
@@ -424,6 +427,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
 
     def _build_loss(self):
         # for seq label
+        # self.EO_label and self.entity_type_label are two predicted
         joint_label = tf.where(  # 0 for empty or pad
             tf.logical_and(tf.greater_equal(self.EO_label, 2), tf.greater_equal(self.entity_type_label, 2)),
             (self.EO_label - 2) + 4 * (self.entity_type_label - 2) + 1,
@@ -443,6 +447,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
             tf.ones_like(losses_seq_label) * self.cfg["pos_gain"],
             tf.ones_like(losses_seq_label)
         ) * seq_label_mask_tf
+        # Label precition loss
         loss_seq_label = \
             tf.reduce_sum(losses_seq_label * seq_label_weights) / tf.reduce_sum(seq_label_weights)
 
@@ -508,6 +513,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
             batch_deno,
             tf.ones_like(batch_deno) * 1e-6,
         )
+        # Logical form prediction loss
         loss_seq2seq = tf.reduce_sum(sketch_ex_mask_ft * loss_seq2seq_example) / batch_deno
 
         opt_loss = self.cfg["seq_label_loss_weight"]*loss_seq_label + \
@@ -610,18 +616,18 @@ class ModelBertTemplate(ModelBertAbstractCls):
         # for input_ids and input_type_ids
         # # for a sequence [prev_q] [SEP] [prev_a] [SEP1] [cur_q] [CLS]
         # # if len of the digitized_seq is 0, add [EMPTY]
-        max_wpl = 0  # max word peace len
-        input_ids_list = []
-        input_pos_ids_list = []
-        input_type_ids_list = []
-        u_lens_list = []
-        max_sll = 0  # max sequence labeling len
-        EO_label_list = []
-        entity_type_label_list = []
-        # predicate_label_list = []
-        # type_label_list = []
+        input_dict = {
+            'max_wpl': 0,
+            'input_ids_list': [],
+            'input_pos_ids_list': [],
+            'input_type_ids_list': [],
+            'u_lens_list': [],
+            'max_sll': 0,  # max sequence labeling len
+            'EO_label_list': [],
+            'entity_type_label_list': []
+        }
 
-        for example in example_batch:
+        def process_inputs(example, input_dict):  
             if "input_ids" in example["cache"]:
                 ipt_ids = example["cache"]["input_ids"]
                 ipt_pos_ids = example["cache"]["input_pos_ids"]
@@ -629,6 +635,13 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 u_lens = example["cache"]["u_lens"]
             else:
                 pos_base = 0
+                # utterance ids are sequence of id of tokenized token text
+                # ids = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(token_text))
+                # convert_tokens_to_ids converts a token string (or a sequence of tokens) 
+                # in a single integer id (or a sequence of ids), using the vocabulary.
+                #
+                # utterances position ids maps token ids to text in original sentence
+                # multiple token could be assigned to a word (i.e. wordpieces)
                 prev_q_ids, prev_q_pos_ids, pos_base = _get_ids_for_u(
                     example["tokenized_utterances_ids"]["prev_q"],
                     example["tokenized_utterances_pos_ids"]["prev_q"],
@@ -666,7 +679,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 for _, _pos_ids in all_seq_data:
                     all_pos_ids.extend(_pos_ids)
                 all_pos_ids_mask = pos_ids_mask_gen(all_pos_ids, max_seq_len)
-                # # apply mask
+                # apply mask
                 new_all_seq_data = []
                 mask_ptr = 0
                 for _ids, _pos_ids in all_seq_data:
@@ -713,12 +726,12 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 example["cache"]["u_lens"] = u_lens
 
             assert len(ipt_ids) == len(ipt_pos_ids) and len(ipt_pos_ids) == len(ipt_type_ids)
-            max_wpl = max(max_wpl, len(ipt_ids))
+            input_dict['max_wpl'] = max(input_dict['max_wpl'], len(ipt_ids))
             # append
-            input_ids_list.append(ipt_ids)
-            input_pos_ids_list.append(ipt_pos_ids)
-            input_type_ids_list.append(ipt_type_ids)
-            u_lens_list.append(u_lens)
+            input_dict['input_ids_list'].append(ipt_ids)
+            input_dict['input_pos_ids_list'].append(ipt_pos_ids)
+            input_dict['input_type_ids_list'].append(ipt_type_ids)
+            input_dict['u_lens_list'].append(u_lens)
 
             # ====== labels =====
             # prev_q_len, prev_a_len, cur_q_len = (
@@ -751,44 +764,34 @@ class ModelBertTemplate(ModelBertAbstractCls):
 
             entity_type_label = prev_q_entity_types[:prev_q_len] + [self.empty_id] + prev_a_entity_types[:prev_a_len] \
                                 + [self.empty_id] + cur_q_entity_types[:cur_q_len]
-            # # # predicates
-            # predicate_label = example["predicates_ids"]["cur_q"]
-            # # # types
-            # type_label = example["types_ids"]["cur_q"]
 
             # sanity
             assert len(EO_label) == len(entity_type_label)
             assert len(EO_label) == ipt_pos_ids[-1] - ipt_pos_ids[0] + 1 - 1
-            max_sll = max(max_sll, len(EO_label))
+            input_dict['max_sll'] = max(input_dict['max_sll'], len(EO_label))
 
-            EO_label_list.append(EO_label)
-            entity_type_label_list.append(entity_type_label)
-            # predicate_label_list.append(predicate_label)
-            # type_label_list.append(type_label)
+            input_dict['EO_label_list'].append(EO_label)
+            input_dict['entity_type_label_list'].append(entity_type_label)
+    
+        for example in example_batch:
+            process_inputs(example, input_dict)
 
         # ====== create ======
-        input_ids_np = np.zeros([bs, max_wpl, ], dtype=self.cfg["intX"])
-        input_pos_ids_np = np.zeros([bs, max_wpl, ], dtype=self.cfg["intX"])
-        input_type_ids_np = np.zeros([bs, max_wpl, ], dtype=self.cfg["intX"])
-        EO_label_np = np.zeros([bs, max_sll, ], dtype=self.cfg["intX"])
-        entity_type_label_np = np.zeros([bs, max_sll, ], dtype=self.cfg["intX"])
-        # predicate_label_np = np.zeros([bs, self.num_predicate_labels, ], dtype=self.cfg["intX"])
-        # type_label_np = np.zeros([bs, self.num_type_labels, ], dtype=self.cfg["intX"])
-
+        input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        input_type_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
+        EO_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
+        entity_type_label_np = np.zeros([bs, input_dict['max_sll'], ], dtype=self.cfg["intX"])
+        
         for idx_e, example in enumerate(example_batch):
             for idx_wp, (_id, _pos_id, _type_id) in enumerate(
-                    zip(input_ids_list[idx_e], input_pos_ids_list[idx_e], input_type_ids_list[idx_e])):
+                    zip(input_dict['input_ids_list'][idx_e], input_dict['input_pos_ids_list'][idx_e], input_dict['input_type_ids_list'][idx_e])):
                 input_ids_np[idx_e, idx_wp] = _id
                 input_pos_ids_np[idx_e, idx_wp] = _pos_id
                 input_type_ids_np[idx_e, idx_wp] = _type_id
-            for idx_sl, (_eo_id, _et_id) in enumerate(zip(EO_label_list[idx_e], entity_type_label_list[idx_e])):
+            for idx_sl, (_eo_id, _et_id) in enumerate(zip(input_dict['EO_label_list'][idx_e], input_dict['entity_type_label_list'][idx_e])):
                 EO_label_np[idx_e, idx_sl] = _eo_id
                 entity_type_label_np[idx_e, idx_sl] = _et_id
-
-            # for _predicate_idx in predicate_label_list[idx_e]:
-            #     predicate_label_np[idx_e, _predicate_idx] = 1
-            # for _type_idx in type_label_list[idx_e]:
-            #     type_label_np[idx_e, _type_idx] = 1
 
         # get feed dict
         feed_dict[self.input_ids] = input_ids_np
@@ -796,110 +799,113 @@ class ModelBertTemplate(ModelBertAbstractCls):
         feed_dict[self.input_type_ids] = input_type_ids_np
         feed_dict[self.EO_label] = EO_label_np
         feed_dict[self.entity_type_label] = entity_type_label_np
-        # feed_dict[self.predicate_label] = predicate_label_np
-        # feed_dict[self.type_label] = type_label_np
 
         # for sketches: need u_lens_list, input_pos_ids_list
-        if "lf" in example_batch[0]:
-            sketch_ids_list = []
-            sketch_entity_list = []
-            sketch_predicate_list = []
-            sketch_type_list = []
-            sketch_num_list = []
-            dict_ut2uid = {"prev_q":0, "prev_a": 2, "cur_q": 4}
-            max_decoder_len = 2
-            for _idx_ex, _example in enumerate(example_batch):
-                u_lens = u_lens_list[_idx_ex]
-                input_pos_ids = input_pos_ids_list[_idx_ex]
+        def process_sketches(example, sketch_dict, input_dict):        
+            u_lens = input_dict['u_lens_list'][_idx_ex]
+            input_pos_ids = input_dict['input_pos_ids_list'][_idx_ex]
 
-                # get token lens
-                t_lens = []
-                t_accu_lens = []
-                _accu_len = 0
-                _u_ptr = 0
-                for u_len in u_lens:
-                    u_token_pos_ids = input_pos_ids[_u_ptr:(_u_ptr+u_len)]
-                    t_len = u_token_pos_ids[-1] - u_token_pos_ids[0] + 1
-                    t_lens.append(t_len)
-                    t_accu_lens.append(_accu_len)
-                    _accu_len += t_len
-                    _u_ptr += u_len
+            # get token lens
+            t_lens = []
+            t_accu_lens = []
+            _accu_len = 0
+            _u_ptr = 0
+            for u_len in u_lens:
+                u_token_pos_ids = input_pos_ids[_u_ptr:(_u_ptr+u_len)]
+                t_len = u_token_pos_ids[-1] - u_token_pos_ids[0] + 1
+                t_lens.append(t_len)
+                t_accu_lens.append(_accu_len)
+                _accu_len += t_len
+                _u_ptr += u_len
 
-                sketch_ids = _example["lf"]["gold_sketch_ids"]  # dsl+1
-                sketch_entity = []  # dsl
-                sketch_predicate = []  # dsl
-                sketch_type = []  # dsl
-                sketch_num = []  # dsl
-                invalid_ex = False
-                if 0 < len(sketch_ids) <= max_seq_len - 2:
-                    sketch_ids = [self.sos_id] + sketch_ids + [self.eos_id]
-                    for _skt_t, _leaf in zip(_example["lf"]["gold_sketch"], _example["lf"]["gold_leaves_ids"] ):
-                        sketch_entity.append(-1)  # index
-                        sketch_predicate.append(self.pad_id)
-                        sketch_type.append(self.pad_id)
-                        sketch_num.append(-1)  # index
-                        if _skt_t == "e":
-                            _base_index = dict_ut2uid[_leaf[1]]
-                            # _u_len = u_lens[_base_index]
-                            _t_len = t_lens[_base_index]
-                            _t_accu_len = t_accu_lens[_base_index]
-                            if _leaf[0] < _t_len:  # (idx, ut)
-                                sketch_entity[-1] = _t_accu_len + _leaf[0]
-                            else:
-                                invalid_ex = True  # label out of index
-                                break
-                        elif _skt_t == "r":
-                            sketch_predicate[-1] = _leaf
-                        elif _skt_t == "Type":
-                            sketch_type[-1] = _leaf
-                        elif _skt_t == "num_utterence":
-                            _base_index = dict_ut2uid["cur_q"]
-                            # _u_len = u_lens[_base_index]
-                            _t_len = t_lens[_base_index]
-                            _t_accu_len = t_accu_lens[_base_index]
-                            if _leaf < _t_len:  # idx
-                                sketch_num[-1] = _t_accu_len + _leaf
-                            else:
-                                invalid_ex = True # label out of index
-                                break
+            sketch_ids = _example["lf"]["gold_sketch_ids"]  # dsl+1
+            sketch_entity = []  # dsl
+            sketch_predicate = []  # dsl
+            sketch_type = []  # dsl
+            sketch_num = []  # dsl
+            invalid_ex = False
+            if 0 < len(sketch_ids) <= max_seq_len - 2:
+                sketch_ids = [self.sos_id] + sketch_ids + [self.eos_id]
+                for _skt_t, _leaf in zip(_example["lf"]["gold_sketch"], _example["lf"]["gold_leaves_ids"] ):
                     sketch_entity.append(-1)  # index
                     sketch_predicate.append(self.pad_id)
                     sketch_type.append(self.pad_id)
                     sketch_num.append(-1)  # index
-                else:  # the len of sketch exceed the max len
-                    invalid_ex = True
-                if invalid_ex:
-                    sketch_ids = []
-                    sketch_entity = []
-                    sketch_predicate = []
-                    sketch_type = []
-                    sketch_num = []
+                    if _skt_t == "e":
+                        _base_index = sketch_dict['dict_ut2uid'][_leaf[1]]
+                        # _u_len = u_lens[_base_index]
+                        _t_len = t_lens[_base_index]
+                        _t_accu_len = t_accu_lens[_base_index]
+                        if _leaf[0] < _t_len:  # (idx, ut)
+                            sketch_entity[-1] = _t_accu_len + _leaf[0]
+                        else:
+                            invalid_ex = True  # label out of index
+                            break
+                    elif _skt_t == "r":
+                        sketch_predicate[-1] = _leaf
+                    elif _skt_t == "Type":
+                        sketch_type[-1] = _leaf
+                    elif _skt_t == "num_utterence":
+                        _base_index = sketch_dict['dict_ut2uid']["cur_q"]
+                        # _u_len = u_lens[_base_index]
+                        _t_len = t_lens[_base_index]
+                        _t_accu_len = t_accu_lens[_base_index]
+                        if _leaf < _t_len:  # idx
+                            sketch_num[-1] = _t_accu_len + _leaf
+                        else:
+                            invalid_ex = True # label out of index
+                            break
+                sketch_entity.append(-1)  # index
+                sketch_predicate.append(self.pad_id)
+                sketch_type.append(self.pad_id)
+                sketch_num.append(-1)  # index
+            else:  # the len of sketch exceed the max len
+                invalid_ex = True
+            if invalid_ex:
+                sketch_ids = []
+                sketch_entity = []
+                sketch_predicate = []
+                sketch_type = []
+                sketch_num = []
 
-                max_decoder_len = max(max_decoder_len, len(sketch_ids))
+            sketch_dict['max_decoder_len'] = max(sketch_dict['max_decoder_len'], len(sketch_ids))
 
-                sketch_ids_list.append(sketch_ids)  # dls, i.e., max_decoder_len
-                sketch_entity_list.append(sketch_entity)  # dls, i.e., max_decoder_len-1
-                sketch_predicate_list.append(sketch_predicate)  # dls, i.e., max_decoder_len-1
-                sketch_type_list.append(sketch_type)  # dls, i.e., max_decoder_len-1
-                sketch_num_list.append(sketch_num)  # dls, i.e., max_decoder_len-1
+            sketch_dict['sketch_ids_list'].append(sketch_ids)  # dls, i.e., max_decoder_len
+            sketch_dict['sketch_entity_list'].append(sketch_entity)  # dls, i.e., max_decoder_len-1
+            sketch_dict['sketch_predicate_list'].append(sketch_predicate)  # dls, i.e., max_decoder_len-1
+            sketch_dict['sketch_type_list'].append(sketch_type)  # dls, i.e., max_decoder_len-1
+            sketch_dict['sketch_num_list'].append(sketch_num)  # dls, i.e., max_decoder_len-1
 
-            sketch_ids_np = np.zeros([len(example_batch), max_decoder_len], self.cfg["intX"])
-            sketch_entity_np = - np.ones([len(example_batch), max_decoder_len-1], self.cfg["intX"])
-            sketch_predicate_np = np.zeros([len(example_batch), max_decoder_len-1], self.cfg["intX"])
-            sketch_type_np = np.zeros([len(example_batch), max_decoder_len-1], self.cfg["intX"])
-            sketch_num_np = - np.ones([len(example_batch), max_decoder_len-1], self.cfg["intX"])
+        if "lf" in example_batch[0]:
+            sketch_dict = {
+                'sketch_ids_list': [],
+                'sketch_entity_list': [],
+                'sketch_predicate_list': [],
+                'sketch_type_list': [],
+                'sketch_num_list': [],
+                'dict_ut2uid': {"prev_q":0, "prev_a": 2, "cur_q": 4},
+                'max_decoder_len': 2
+            }
+
+            for _idx_ex, _example in enumerate(example_batch):
+                process_sketches(example, sketch_dict, input_dict)
+
+            sketch_ids_np = np.zeros([len(example_batch), sketch_dict['max_decoder_len']], self.cfg["intX"])
+            sketch_entity_np = - np.ones([len(example_batch), sketch_dict['max_decoder_len']-1], self.cfg["intX"])
+            sketch_predicate_np = np.zeros([len(example_batch), sketch_dict['max_decoder_len']-1], self.cfg["intX"])
+            sketch_type_np = np.zeros([len(example_batch), sketch_dict['max_decoder_len']-1], self.cfg["intX"])
+            sketch_num_np = - np.ones([len(example_batch), sketch_dict['max_decoder_len']-1], self.cfg["intX"])
 
             for _idx_ex in range(len(example_batch)):
-                for _idx_t, _id in enumerate(sketch_ids_list[_idx_ex]):
+                for _idx_t, _id in enumerate(sketch_dict['sketch_ids_list'][_idx_ex]):
                     sketch_ids_np[_idx_ex, _idx_t] = _id
-
-                for _idx_t, _id in enumerate(sketch_entity_list[_idx_ex]):
+                for _idx_t, _id in enumerate(sketch_dict['sketch_entity_list'][_idx_ex]):
                     sketch_entity_np[_idx_ex, _idx_t] = _id
-                for _idx_t, _id in enumerate(sketch_predicate_list[_idx_ex]):
+                for _idx_t, _id in enumerate(sketch_dict['sketch_predicate_list'][_idx_ex]):
                     sketch_predicate_np[_idx_ex, _idx_t] = _id
-                for _idx_t, _id in enumerate(sketch_type_list[_idx_ex]):
+                for _idx_t, _id in enumerate(sketch_dict['sketch_type_list'][_idx_ex]):
                     sketch_type_np[_idx_ex, _idx_t] = _id
-                for _idx_t, _id in enumerate(sketch_num_list[_idx_ex]):
+                for _idx_t, _id in enumerate(sketch_dict['sketch_num_list'][_idx_ex]):
                     sketch_num_np[_idx_ex, _idx_t] = _id
 
             feed_dict[self.sketch_label] = sketch_ids_np
@@ -914,7 +920,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 )
             else:
                 feed_dict[self.loss_gain_wrt_qt] = np.ones([len(example_batch)], dtype="float32")
-
+        #assert False
         return feed_dict
 
 
