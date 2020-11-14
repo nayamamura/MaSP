@@ -117,7 +117,7 @@ class E2eDataset(object):
         # dataset_obj.fetch_examples(max_sent_len=13)
         anchor = 0
     
-    def add_prev_example(feature_list):
+    def add_prev_example(self, feature_list):
         # Iterate over and add previous logical form
         prev = None
         for _example in feature_list:
