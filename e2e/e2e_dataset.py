@@ -293,11 +293,6 @@ class E2eDataset(object):
                 turn["lf"] = {
                     "true_lf": raw_dialog_turn["current"]["system"]["true_lf"],
                 }
-            # Add previous logical form    
-            '''if not prev_none and "true_lf" in raw_dialog_turn["previous"]["system"]:
-                turn["prev_lf"] = {
-                    "true_lf": raw_dialog_turn["previous"]["system"]["true_lf"],
-                }'''
             new_dialog.append(turn)
         return new_dialog
 
@@ -485,60 +480,56 @@ class E2eProcessor(BaseProcessor):
 
     @staticmethod
     def post_process_dialog_turn(dialog_turn, *args, **kwargs):
-        def _post_process_dialog_turn(dialog_turn, lf, turn, *args, **kwargs):
-            if lf in dialog_turn:  # for training and dev
-                # 1. filtering by the occurrence of entity and predicates
-                true_lfs = dialog_turn[lf]["true_lf"]
-                # 1.1 gold ent
-                gold_entities = set(dialog_turn["entities"][turn])
-                # 1.2 gold predicates
-                gold_predicates = set(dialog_turn["predicates"][turn])
-                # 1.3 gold num
-                num2idxs = index_num_in_tokenized_utterance(
-                    dialog_turn["tokenized_utterances"][turn],
-                    [eo_label != "O" for eo_label in dialog_turn["EOs"][turn]])
-                gold_nums = set(num2idxs.keys())
-                # if len(gold_nums) > 0:
-                #     print("QT: {}; len: {}, utterance: {}; nums: {}".format(
-                #         dialog_turn["question_type"],
-                #         len(gold_nums), dialog_turn["utterances"]["cur_q"], gold_nums))
-                valid_indices = []
-                for idx_lf, true_lf in enumerate(true_lfs):
-                    entities_in_lf = set()
-                    predicates_in_lf = set()
-                    num_in_lf = set()
-                    for _item_type, _item_code in true_lf[1]:
-                        if _item_type == "e": # Entity
-                            entities_in_lf.add(_item_code)
-                        elif _item_type == "r": # Predicate
-                            predicates_in_lf.add(_item_code)
-                        elif _item_type == "num_utterence": # 
-                            num_in_lf.add(int(_item_code))
-                    # if gold_entities.issubset(entities_in_lf) and gold_predicates.issubset(predicates_in_lf):
-                    #     valid_indices.append(idx_lf)
-                    # Set of entity in the logical form is idential to entity list in current question propery
-                    if gold_entities == entities_in_lf:
-                        # Set of predicates in gold is subset of predicate in logical form
-                        if gold_predicates.issubset(predicates_in_lf):
-                            if gold_nums == num_in_lf:
-                                valid_indices.append(idx_lf)
-                                cond = 0
-                            else:
-                                cond = 1
+        if 'lf' in dialog_turn:  # for training and dev
+            # 1. filtering by the occurrence of entity and predicates
+            true_lfs = dialog_turn['lf']["true_lf"]
+            # 1.1 gold ent
+            gold_entities = set(dialog_turn["entities"]['cur_q'])
+            # 1.2 gold predicates
+            gold_predicates = set(dialog_turn["predicates"]['cur_q'])
+            # 1.3 gold num
+            num2idxs = index_num_in_tokenized_utterance(
+                dialog_turn["tokenized_utterances"][turn],
+                [eo_label != "O" for eo_label in dialog_turn["EOs"]['cur_q']])
+            gold_nums = set(num2idxs.keys())
+            # if len(gold_nums) > 0:
+            #     print("QT: {}; len: {}, utterance: {}; nums: {}".format(
+            #         dialog_turn["question_type"],
+            #         len(gold_nums), dialog_turn["utterances"]["cur_q"], gold_nums))
+            valid_indices = []
+            for idx_lf, true_lf in enumerate(true_lfs):
+                entities_in_lf = set()
+                predicates_in_lf = set()
+                num_in_lf = set()
+                for _item_type, _item_code in true_lf[1]:
+                    if _item_type == "e": # Entity
+                        entities_in_lf.add(_item_code)
+                    elif _item_type == "r": # Predicate
+                        predicates_in_lf.add(_item_code)
+                    elif _item_type == "num_utterence": # 
+                        num_in_lf.add(int(_item_code))
+                # if gold_entities.issubset(entities_in_lf) and gold_predicates.issubset(predicates_in_lf):
+                #     valid_indices.append(idx_lf)
+                # Set of entity in the logical form is idential to entity list in current question propery
+                if gold_entities == entities_in_lf:
+                    # Set of predicates in gold is subset of predicate in logical form
+                    if gold_predicates.issubset(predicates_in_lf):
+                        if gold_nums == num_in_lf:
+                            valid_indices.append(idx_lf)
+                            cond = 0
                         else:
-                            cond = 2
+                            cond = 1
                     else:
-                        cond = 3
-                    # if cond != 0:
-                    #     print("\t\tcond", cond)
-                # print("corrct {} / {}: {}".format(len(valid_indices), len(true_lfs), len(valid_indices)>0))
-                # Entire loop above is to add valid indices for the logical form
-                dialog_turn[lf]["valid_indices"] = valid_indices
-            return dialog_turn
-
-        dialog_turn = _post_process_dialog_turn(dialog_turn, 'lf', 'cur_q', *args, **kwargs)
-        #dialog_turn = _post_process_dialog_turn(dialog_turn, 'prev_lf', 'prev_q', *args, **kwargs)
+                        cond = 2
+                else:
+                    cond = 3
+                # if cond != 0:
+                #     print("\t\tcond", cond)
+            # print("corrct {} / {}: {}".format(len(valid_indices), len(true_lfs), len(valid_indices)>0))
+            # Entire loop above is to add valid indices for the logical form
+            dialog_turn['lf']["valid_indices"] = valid_indices
         return dialog_turn
+        
 
     def process_dialog_turn(self, dialog_turn):
         if "lf" in dialog_turn:  # for training and dev
