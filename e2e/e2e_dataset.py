@@ -480,17 +480,17 @@ class E2eProcessor(BaseProcessor):
 
     @staticmethod
     def post_process_dialog_turn(dialog_turn, *args, **kwargs):
-        if 'lf' in dialog_turn:  # for training and dev
+        if "lf" in dialog_turn:  # for training and dev
             # 1. filtering by the occurrence of entity and predicates
-            true_lfs = dialog_turn['lf']["true_lf"]
+            true_lfs = dialog_turn["lf"]["true_lf"]
             # 1.1 gold ent
-            gold_entities = set(dialog_turn["entities"]['cur_q'])
+            gold_entities = set(dialog_turn["entities"]["cur_q"])
             # 1.2 gold predicates
-            gold_predicates = set(dialog_turn["predicates"]['cur_q'])
+            gold_predicates = set(dialog_turn["predicates"]["cur_q"])
             # 1.3 gold num
             num2idxs = index_num_in_tokenized_utterance(
-                dialog_turn["tokenized_utterances"][turn],
-                [eo_label != "O" for eo_label in dialog_turn["EOs"]['cur_q']])
+                dialog_turn["tokenized_utterances"]["cur_q"],
+                [eo_label != "O" for eo_label in dialog_turn["EOs"]["cur_q"]])
             gold_nums = set(num2idxs.keys())
             # if len(gold_nums) > 0:
             #     print("QT: {}; len: {}, utterance: {}; nums: {}".format(
@@ -527,7 +527,7 @@ class E2eProcessor(BaseProcessor):
                 #     print("\t\tcond", cond)
             # print("corrct {} / {}: {}".format(len(valid_indices), len(true_lfs), len(valid_indices)>0))
             # Entire loop above is to add valid indices for the logical form
-            dialog_turn['lf']["valid_indices"] = valid_indices
+            dialog_turn["lf"]["valid_indices"] = valid_indices
         return dialog_turn
         
 
