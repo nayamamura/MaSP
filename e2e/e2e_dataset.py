@@ -133,6 +133,27 @@ class E2eDataset(object):
             else:
                 prev = None
 
+        # Get previous gold
+        for _example in feature_list:
+            if _example["prev"] and _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"]:
+                prev_lf = []
+                for item in _example["prev"]["lf"]["gold_lf"][1]:
+                    prev_lf.extend(item[1])
+                _example["prev_lf"] = prev_lf
+
+                # Tokenize and add ids
+                example["prev_lf_tokens"] = []
+                example["prev_lf_ids"] = []
+                example["prev_lf_pos_ids"] = []
+                for pos_id, token_text in enumerate(_example["prev_lf"].split()):
+                    tokens = tokenizer.tokenize(token_text)
+                    ids = tokenizer.convert_tokens_to_ids(tokens)
+                    example["prev_lf_tokens"].extend(tokens)
+                    example["prev_lf_ids"].extend(ids)
+                    example["prev_lf_pos_ids"].extend([pos_id] * len(ids))
+
+
+
     def process_training_data(self, debug_num=0):
         # train
         logging.info("For training data")

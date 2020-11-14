@@ -425,6 +425,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
                 )
         return seq_label_logits
 
+    # Calculate loss
     def _build_loss(self):
         # for seq label
         # self.EO_label and self.entity_type_label are two predicted
@@ -523,6 +524,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
             "seq2seq": loss_seq2seq,
         }
 
+    # Predicted logits
     def _build_prediction(self):
         # # for NER sequence labeling
         predictions_seq_label = tf.cast(tf.argmax(self.logits_dict["seq_label"], axis=-1), tf.int32)
