@@ -146,7 +146,7 @@ class E2eDataset(object):
                 _example["prev_lf"] = prev_lf
 
                 # Tokenize and add ids
-                for pos_id, token_text in enumerate(_example["prev_lf"]:
+                for pos_id, token_text in enumerate(_example["prev_lf"]):
                     tokens = tokenizer.tokenize(token_text)
                     ids = tokenizer.convert_tokens_to_ids(tokens)
                     _example["prev_lf_tokens"].extend(tokens)

@@ -1018,7 +1018,7 @@ class ModelBertTemplate(ModelBertAbstractCls):
             input_dict['input_ids_list'].append(ipt_ids)
             input_dict['input_pos_ids_list'].append(ipt_pos_ids)
             input_dict['input_type_ids_list'].append(ipt_type_ids)
-            input_dict['u_lens_list'].append(u_lens)
+            #input_dict['u_lens_list'].append(u_lens)
         # ====== create ======
         input_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
         input_pos_ids_np = np.zeros([bs, input_dict['max_wpl'], ], dtype=self.cfg["intX"])
