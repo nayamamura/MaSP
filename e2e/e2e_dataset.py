@@ -133,7 +133,7 @@ class E2eDataset(object):
         types = []
 
         # Process entity/predicate/type in context
-        '''for idx, ctx in enumerate(lf):
+        for idx, ctx in enumerate(lf):
             if ctx in BaseProcessor.dict_e:
                 entities.append(ctx)
                 ent_str.append(BaseProcessor.dict_e[ctx])
@@ -146,7 +146,7 @@ class E2eDataset(object):
                 predicates.append(BaseProcessor.dict_p[ctx])
                 lf[idx] = BaseProcessor.dict_p[ctx]
             if ctx in BaseProcessor.dict_t2e:
-                types.append(ctx)'''
+                types.append(ctx)
         _example["entities"][ut_type] = entities
         _example["predicates"][ut_type] = predicates
         _example["types"][ut_type] = types
@@ -204,7 +204,7 @@ class E2eDataset(object):
                     for item in _example["prev"]["lf"]["gold_lf"][1]:
                         prev_lf.append(str(item[1]))    
                 self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)
-                #self.process_context(prev_lf, "prev_a", labels_dict, tokenizer, _example)    
+                self.process_context([], "prev_a", labels_dict, tokenizer, _example)    
                 
 
     def process_training_data(self, debug_num=0):
