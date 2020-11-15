@@ -43,7 +43,6 @@ class ModelBertAbstractCls(ModelStructure, metaclass=ABCMeta):
         self.is_paired_data = is_paired_data
         self.scope = scope
 
-        print(cfg['bert_config_file'])
         if os.path.isfile(cfg['bert_config_file']):
             self.bert_cfg = BertConfig.from_json_file(cfg['bert_config_file'])
         else:
