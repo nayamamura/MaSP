@@ -87,7 +87,7 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         # Iterate over and add previous logical form    
-        self.add_prev_example(feature_list, self.tokenizer)    
+        self.add_prev_example(feature_list, self.processor.get_labels_dict(), self.tokenizer)    
         return feature_list
 
     def fetch_examples(self, max_sent_len=None):
@@ -117,7 +117,15 @@ class E2eDataset(object):
         # dataset_obj.fetch_examples(max_sent_len=13)
         anchor = 0
     
-    def add_prev_example(self, feature_list, tokenizer):
+    def add_prev_example(self, feature_list, labels_dict, tokenizer):
+        label_map = {  # from item_type to the name in labels_dict
+            "entities": "entities",
+            "predicates": "predicates",
+            "types": "types",
+            "EOs": "EOs",
+            "entity_types": "types",
+            "sketch": "sketch",
+        }
         # Iterate over and add previous logical form
         prev = None
         for _example in feature_list:
@@ -134,24 +142,50 @@ class E2eDataset(object):
                 prev = None
 
         # Get previous gold
-        for _example in feature_list:
-            _example["prev_lf_tokens"] = []
-            _example["prev_lf_ids"] = []
-            _example["prev_lf_pos_ids"] = []    
-            if "prev" in _example and "lf" in _example["prev"] and "gold_lf" in _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"] is not None:
-                prev_lf = []                
-                for item in _example["prev"]["lf"]["gold_lf"][1]:
-                    prev_lf.append(str(item[0]))
-                    prev_lf.append(str(item[1]))
-                _example["prev_lf"] = prev_lf
+        for _example in tqdm(feature_list):
+            if "prev" in _example:
+                prev_lf = []
+                if "lf" in _example["prev"] and "gold_lf" in _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"] is not None:
+                    for item in _example["prev"]["lf"]["gold_lf"][1]:
+                        prev_lf.append(str(item[0]))
+                        prev_lf.append(str(item[1]))
 
-                # Tokenize and add ids
-                for pos_id, token_text in enumerate(_example["prev_lf"]):
+                # Override inputs
+                prev_lf_str = ' '.join(prev_lf)
+                _example["utterances"]["prev_q"] = ""
+                _example["utterances"]["prev_a"] = prev_lf_str
+                _example["tokenized_utterances"]["prev_q"] = ""
+                _example["tokenized_utterances"]["prev_a"] = spacy_tokenize(prev_lf_str)
+                _example["entities"]["prev_q"] = []
+                _example["entities"]["prev_a"] = []
+                _example["predicates"]["prev_q"] = []
+                _example["types"]["prev_q"] = []
+                _example["EOs"]["prev_q"] = []
+                _example["EOs"]["prev_a"] = ['O'] * len(_example["tokenized_utterances"]["prev_a"])
+                _example["entity_types"]["prev_q"] = []
+                _example["entity_types"]["prev_a"] = [EMPTY_TOKEN] * len(_example["tokenized_utterances"]["prev_a"])
+                _example["ent2idxss"]["prev_q"] = {}
+                _example["ent2idxss"]["prev_a"] = {}
+
+                # Tokenize and add ids for utterance
+                _example["tokenized_utterances_ids"]["prev_q"] = []
+                _example["tokenized_utterances_pos_ids"]["prev_q"] = []
+                _example["tokenized_utterances_ids"]["prev_a"] = []
+                _example["tokenized_utterances_pos_ids"]["prev_a"] = []
+                for pos_id, token_text in enumerate(prev_lf):
                     tokens = tokenizer.tokenize(token_text)
                     ids = tokenizer.convert_tokens_to_ids(tokens)
-                    _example["prev_lf_tokens"].extend(tokens)
-                    _example["prev_lf_ids"].extend(ids)
-                    _example["prev_lf_pos_ids"].extend([pos_id] * len(ids))
+                    _example["tokenized_utterances_ids"]["prev_a"].extend(ids)
+                    _example["tokenized_utterances_pos_ids"]["prev_a"].extend([pos_id] * len(ids))
+        
+                # for labels
+                for item_type in ["predicates", "types", "EOs", "entity_types"]:  # "entities",
+                    label_name = label_map[item_type]
+                    label_list = labels_dict[label_name]["labels"]
+                    item_id_type = item_type + "_ids"
+                    _example[item_id_type]["prev_q"] = [label_list.index(val) if val in label_list else 0 for val in _example[item_type]["prev_q"]]
+                    if item_type in ["EOs", "entity_types"]:
+                        _example[item_id_type]["prev_a"] = [label_list.index(val) if val in label_list else 0 for val in _example[item_type]["prev_a"]]
 
 
     def process_training_data(self, debug_num=0):
@@ -170,7 +204,7 @@ class E2eDataset(object):
             )
         self._labels_dict = self.processor.get_labels_dict()
         # Iterate over and add previous logical form
-        self.add_prev_example(self._train_feature_list, self.tokenizer) 
+        self.add_prev_example(self._train_feature_list, self.processor.get_labels_dict(), self.tokenizer) 
 
         # dev
         logging.info("For dev data")
@@ -183,7 +217,7 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         # Iterate over and add previous logical form
-        self.add_prev_example(self._dev_feature_list, self.tokenizer)
+        self.add_prev_example(self._dev_feature_list, self.processor.get_labels_dict(), self.tokenizer)
 
     @property
     def num_train_examples(self):
