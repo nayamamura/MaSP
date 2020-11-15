@@ -145,10 +145,10 @@ class E2eDataset(object):
         for _example in tqdm(feature_list):
             if "prev" in _example:
                 prev_lf = []
-                if "lf" in _example["prev"] and "gold_lf" in _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"] is not None:
-                    for item in _example["prev"]["lf"]["gold_lf"][1]:
+                #if "lf" in _example["prev"] and "gold_lf" in _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"] is not None:
+                    #for item in _example["prev"]["lf"]["gold_lf"][1]:
                         #prev_lf.append(str(item[0]))
-                        prev_lf.append(str(item[1]))
+                        #prev_lf.append(str(item[1]))
 
                 # Override inputs
                 prev_lf_str = ' '.join(prev_lf)
