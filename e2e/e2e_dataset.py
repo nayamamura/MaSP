@@ -152,6 +152,10 @@ class E2eDataset(object):
         _example["predicates"][ut_type] = predicates
         _example["types"][ut_type] = types
 
+        # Add previous question type as context
+        if ut_type == 'prev_q':
+            lf = [_example["prev_question_type"]] + lf
+
         lf_str = ' '.join(lf)
         _example["utterances"][ut_type] = lf_str
         _example["tokenized_utterances"][ut_type] = spacy_tokenize(lf_str)
