@@ -117,7 +117,7 @@ class E2eDataset(object):
         # dataset_obj.fetch_examples(max_sent_len=13)
         anchor = 0
     
-    def process_context(self, lf, ut_type, labels_dict, tokenizer, _example):
+    def process_context(self, plf, ut_type, labels_dict, tokenizer, _example):
         label_map = {  # from item_type to the name in labels_dict
             "entities": "entities",
             "predicates": "predicates",
@@ -133,7 +133,8 @@ class E2eDataset(object):
         types = []
 
         # Process entity/predicate/type in context
-        for idx, ctx in enumerate(lf):
+        lf = []
+        for idx, ctx in enumerate(plf):
             if ctx in BaseProcessor.dict_e:
                 entities.append(ctx)
                 ent_str.append(BaseProcessor.dict_e[ctx])
@@ -141,10 +142,10 @@ class E2eDataset(object):
                     ent_types.append(BaseProcessor.dict_e2t[ctx])
                 else:
                     ent_types.append(UNK_TOKEN)
-                lf[idx] = BaseProcessor.dict_e[ctx]
+                lf.append(BaseProcessor.dict_e[ctx])
             if ctx in BaseProcessor.dict_p:
                 predicates.append(BaseProcessor.dict_p[ctx])
-                lf[idx] = BaseProcessor.dict_p[ctx]
+                lf.append(BaseProcessor.dict_p[ctx])
             if ctx in BaseProcessor.dict_t2e:
                 types.append(ctx)
         _example["entities"][ut_type] = entities
@@ -183,29 +184,24 @@ class E2eDataset(object):
     def add_prev_example(self, feature_list, labels_dict, tokenizer):
         # Iterate over and add previous logical form
         prev = None
-        for _example in feature_list:
+        for _example in tqdm(feature_list):
             eid = _example['id'].split('|||')
             #print(eid)
             cur_idx = int(eid[1])
             max_idx = int(eid[2])
             if  prev is not None:
-                _example["prev"] = prev
+                prev_lf = []
+                if "lf" in prev and "gold_lf" in prev["lf"] and prev["lf"]["gold_lf"] is not None:
+                    for item in prev["lf"]["gold_lf"][1]:
+                        prev_lf.append(str(item[1]))    
+                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)
+                #self.process_context([], "prev_a", labels_dict, tokenizer, _example)    
+
             # Store current lf for next iteration
             if cur_idx != max_idx - 1:
                 prev = _example
             else:
-                prev = None
-
-        # Get previous gold
-        for _example in tqdm(feature_list):
-            if "prev" in _example:
-                prev_lf = []
-                if "lf" in _example["prev"] and "gold_lf" in _example["prev"]["lf"] and _example["prev"]["lf"]["gold_lf"] is not None:
-                    for item in _example["prev"]["lf"]["gold_lf"][1]:
-                        prev_lf.append(str(item[1]))    
-                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)
-                self.process_context([], "prev_a", labels_dict, tokenizer, _example)    
-                
+                prev = None                
 
     def process_training_data(self, debug_num=0):
         # train
