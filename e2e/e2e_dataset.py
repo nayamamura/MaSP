@@ -181,6 +181,7 @@ class E2eDataset(object):
             item_id_type = item_type + "_ids"
             _example[item_id_type][ut_type] = [label_list.index(val) if val in label_list else 0 for val in _example[item_type][ut_type]]
 
+
     def add_prev_example(self, feature_list, labels_dict, tokenizer):
         # Iterate over and add previous logical form
         prev = None
@@ -193,9 +194,9 @@ class E2eDataset(object):
                 prev_lf = []
                 if "lf" in prev and "gold_lf" in prev["lf"] and prev["lf"]["gold_lf"] is not None:
                     for item in prev["lf"]["gold_lf"][1]:
-                        prev_lf.append(str(item[1]))    
-                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)
-                #self.process_context([], "prev_a", labels_dict, tokenizer, _example)    
+                        prev_lf.append(str(item[1]))
+                self.process_context([ent for ent in _example["ent2idxss"]["prev_a"].keys()], "prev_a", labels_dict, tokenizer, _example)
+                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example) 
 
             # Store current lf for next iteration
             if cur_idx != max_idx - 1:
