@@ -87,7 +87,7 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         # Iterate over and add previous logical form
-        self.add_prev_example(feature_list, self.processor.get_labels_dict(), self.tokenizer)    
+        feature_list = self.add_prev_example(feature_list, self.processor.get_labels_dict(), self.tokenizer)    
         return feature_list
 
     def fetch_examples(self, max_sent_len=None):
@@ -167,8 +167,8 @@ class E2eDataset(object):
                 lf.append(BaseProcessor.dict_p[ctx])
             if ctx in BaseProcessor.dict_t2e:
                 types.append(ctx)
-            #if ctx in lf_grammer:
-                #lf.append(lf_grammer[ctx])
+            if ctx in lf_grammer:
+                lf.append(lf_grammer[ctx])
 
         _example["entities"][ut_type] = entities
         _example["predicates"][ut_type] = predicates
@@ -235,6 +235,15 @@ class E2eDataset(object):
             else:
                 prev = None
 
+        new_feature_list = []
+        for _example in tqdm(feature_list):
+            if _example["question_type"] != "Clarification":
+                new_feature_list.append(_example)
+        return new_feature_list      
+
+
+
+
     def process_training_data(self, debug_num=0):
         # train
         logging.info("For training data")
@@ -251,7 +260,7 @@ class E2eDataset(object):
             )
         self._labels_dict = self.processor.get_labels_dict()
         # Iterate over and add previous logical form
-        self.add_prev_example(self._train_feature_list, self.processor.get_labels_dict(), self.tokenizer) 
+        self._train_feature_list = self.add_prev_example(self._train_feature_list, self.processor.get_labels_dict(), self.tokenizer)
 
         # dev
         logging.info("For dev data")
@@ -264,7 +273,7 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         # Iterate over and add previous logical form
-        self.add_prev_example(self._dev_feature_list, self.processor.get_labels_dict(), self.tokenizer)
+        self._dev_feature_list = self.add_prev_example(self._dev_feature_list, self.processor.get_labels_dict(), self.tokenizer)
 
     @property
     def num_train_examples(self):
