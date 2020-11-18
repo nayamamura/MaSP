@@ -167,8 +167,8 @@ class E2eDataset(object):
                 lf.append(BaseProcessor.dict_p[ctx])
             if ctx in BaseProcessor.dict_t2e:
                 types.append(ctx)
-            if ctx in lf_grammer:
-                lf.append(lf_grammer[ctx])
+            #if ctx in lf_grammer:
+                #lf.append(lf_grammer[ctx])
 
         _example["entities"][ut_type] = entities
         _example["predicates"][ut_type] = predicates
