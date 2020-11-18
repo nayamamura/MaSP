@@ -126,6 +126,25 @@ class E2eDataset(object):
             "entity_types": "types",
             "sketch": "sketch",
         }
+        lf_grammer = {
+            "A1": "start set",
+            "A2": "start number",
+            "A3": "start boolean",
+            "A4": "find", 
+            "A5": "count",
+            "A6": "in",
+            "A7": "union",
+            "A8": "inter",
+            "A9": "diff",
+            "A10": "large",
+            "A11": "less",
+            "A12": "equal",
+            "A13": "argument maximum",
+            "A14": "argument minimum",
+            "A15": "filter",
+            "A16": "transform intermediate",
+            "A7": "set",
+        }
         entities = []
         ent_types = []
         ent_str = []
@@ -148,13 +167,12 @@ class E2eDataset(object):
                 lf.append(BaseProcessor.dict_p[ctx])
             if ctx in BaseProcessor.dict_t2e:
                 types.append(ctx)
+            if ctx in lf_grammer:
+                lf.append(lf_grammer[ctx])
+
         _example["entities"][ut_type] = entities
         _example["predicates"][ut_type] = predicates
         _example["types"][ut_type] = types
-
-        # Add previous question type as context
-        if ut_type == 'prev_q':
-            lf = [_example["prev_question_type"]] + lf
 
         lf_str = ' '.join(lf)
         _example["utterances"][ut_type] = lf_str
@@ -184,7 +202,10 @@ class E2eDataset(object):
             label_list = labels_dict[label_name]["labels"]
             item_id_type = item_type + "_ids"
             _example[item_id_type][ut_type] = [label_list.index(val) if val in label_list else 0 for val in _example[item_type][ut_type]]
-
+        
+        # Debug
+        #if _example["prev_question_type"] == "Clarification":
+            #print(lf)
 
     def add_prev_example(self, feature_list, labels_dict, tokenizer):
         # Iterate over and add previous logical form
@@ -197,16 +218,17 @@ class E2eDataset(object):
             if  prev is not None:
                 prev_lf = []
                 if "lf" in prev and "gold_lf" in prev["lf"] and prev["lf"]["gold_lf"] is not None:
+                    # Debug
+                    #print(prev["lf"]["gold_lf"])
                     for item in prev["lf"]["gold_lf"][1]:
                         prev_lf.append(str(item[1]))
+                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)         
                 self.process_context([ent for ent in _example["ent2idxss"]["prev_a"].keys()], "prev_a", labels_dict, tokenizer, _example)
-                self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example) 
-
             # Store current lf for next iteration
             if cur_idx != max_idx - 1:
                 prev = _example
             else:
-                prev = None                
+                prev = None
 
     def process_training_data(self, debug_num=0):
         # train
