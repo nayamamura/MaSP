@@ -219,7 +219,12 @@ class E2eDataset(object):
                 prev_lf = []
                 if "lf" in prev and "gold_lf" in prev["lf"] and prev["lf"]["gold_lf"] is not None:
                     # Debug
-                    #print(prev["lf"]["gold_lf"])
+                    #if _example["prev_question_type"] == "Clarification":
+                        #print(_example["utterances"]["prev_q"])
+                        #print(_example["utterances"]["prev_a"])
+                        #print(_example["utterances"]["cur_q"])
+                        #print(_example["lf"]["gold_lf"])
+                        #print(prev["lf"]["gold_lf"])
                     for item in prev["lf"]["gold_lf"][1]:
                         prev_lf.append(str(item[1]))
                 self.process_context(prev_lf, "prev_q", labels_dict, tokenizer, _example)         
@@ -816,7 +821,7 @@ class E2eProcessor(BaseProcessor):
                 new_sketch2ids_wrt_qt[_qt_str] = _bubble_sort_for_sketch_freq_list(new_sketch2ids_wrt_qt[_qt_str])
 
         # remove the ids
-        sketch2ids_wrt_qt["Clarification"] = []
+        #sketch2ids_wrt_qt["Clarification"] = []
         filtered_qt2sketch = {}
         for _qt_str, _sketch_freq_list in sketch2ids_wrt_qt.items():
             filtered_qt2sketch[_qt_str] = [_sketch for _sketch, _ in _sketch_freq_list]
