@@ -87,7 +87,7 @@ class E2eDataset(object):
                 self.processor.transform_example_to_feature(_example, self.processor.get_labels_dict(), self.tokenizer),
             )
         # Iterate over and add previous logical form
-        feature_list = self.add_prev_example(feature_list, self.processor.get_labels_dict(), self.tokenizer)    
+        self.add_prev_example(feature_list, self.processor.get_labels_dict(), self.tokenizer)    
         return feature_list
 
     def fetch_examples(self, max_sent_len=None):
